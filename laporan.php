@@ -1,56 +1,27 @@
 <?php
-session_start();
-include 'koneksi.php';
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    header("Location: login.php");
-    exit;
-}
-$nama_admin = $_SESSION['nama'];
-$filter_bulan = isset($_GET['bulan']) ? $_GET['bulan'] : '';
-$filter_tahun = isset($_GET['tahun']) ? $_GET['tahun'] : '';
-$query_laporan = "
-    SELECT DISTINCT
-        da.id,
-        da.nik_anak,
-        da.nama_anak,
-        da.tgl_lahir,
-        da.nama_ibu,
-        da.nama_ayah,
-        da.alamat
-    FROM
-        data_anak da
-    INNER JOIN
-        imunisasi i ON da.id = i.anak_id
-";
-$where_clauses = [];
-$param_types = '';
-$param_values = [];
-if (!empty($filter_bulan)) {
-    $where_clauses[] = "MONTH(i.tanggal) = ?";
-    $param_types .= 'i';
-    $param_values[] = $filter_bulan;
-}
-if (!empty($filter_tahun)) {
-    $where_clauses[] = "YEAR(i.tanggal) = ?";
-    $param_types .= 'i';
-    $param_values[] = $filter_tahun;
-}
-if (!empty($where_clauses)) {
-    $query_laporan .= " WHERE " . implode(" AND ", $where_clauses);
-}
-$query_laporan .= " ORDER BY da.nama_anak ASC";
-$stmt = mysqli_prepare($conn, $query_laporan);
-if ($stmt === false) {
-    die("Query preparation failed: " . htmlspecialchars(mysqli_error($conn)));
-}
-if (!empty($param_values)) {
-    mysqli_stmt_bind_param($stmt, $param_types, ...$param_values);
+require_once 'auth.php';
+require_once 'koneksi.php';
+require_role('admin');
+send_security_headers();
+
+$filter_bulan = filter_var($_GET['bulan'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 12]]) ?: '';
+$filter_tahun = filter_var($_GET['tahun'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 2000, 'max_range' => 2100]]) ?: '';
+$queryLaporan = 'SELECT i.id, i.tanggal, i.jenis_imunisasi, i.berat_badan, i.tinggi_badan, i.diagnosa, i.keterangan, da.nik_anak, da.nama_anak, da.tgl_lahir, da.nama_ibu, da.nama_ayah, da.alamat FROM imunisasi i INNER JOIN data_anak da ON da.id = i.anak_id';
+
+if ($filter_bulan !== '' && $filter_tahun !== '') {
+    $stmt = mysqli_prepare($conn, $queryLaporan . ' WHERE MONTH(i.tanggal) = ? AND YEAR(i.tanggal) = ? ORDER BY i.tanggal DESC, da.nama_anak ASC');
+    mysqli_stmt_bind_param($stmt, 'ii', $filter_bulan, $filter_tahun);
+} elseif ($filter_bulan !== '') {
+    $stmt = mysqli_prepare($conn, $queryLaporan . ' WHERE MONTH(i.tanggal) = ? ORDER BY i.tanggal DESC, da.nama_anak ASC');
+    mysqli_stmt_bind_param($stmt, 'i', $filter_bulan);
+} elseif ($filter_tahun !== '') {
+    $stmt = mysqli_prepare($conn, $queryLaporan . ' WHERE YEAR(i.tanggal) = ? ORDER BY i.tanggal DESC, da.nama_anak ASC');
+    mysqli_stmt_bind_param($stmt, 'i', $filter_tahun);
+} else {
+    $stmt = mysqli_prepare($conn, $queryLaporan . ' ORDER BY i.tanggal DESC, da.nama_anak ASC');
 }
 mysqli_stmt_execute($stmt);
 $result_laporan = mysqli_stmt_get_result($stmt);
-if (!$result_laporan) {
-    die("Query execution failed: " . htmlspecialchars(mysqli_error($conn)));
-}
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -108,13 +79,14 @@ if (!$result_laporan) {
         <table class="min-w-full text-sm table-auto divide-y divide-gray-200">
             <thead class="bg-green-600 text-white">
                 <tr>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-green-700 uppercase tracking-wider">No</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-green-700 uppercase tracking-wider">NIK Anak</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-green-700 uppercase tracking-wider">Nama Anak</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-green-700 uppercase tracking-wider">Tgl. Lahir</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-green-700 uppercase tracking-wider">Nama Ibu</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-green-700 uppercase tracking-wider">Nama Ayah</th>
-                    <th class="px-6 py-3 text-left text-xs font-medium text-green-700 uppercase tracking-wider">Alamat</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">No</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Tanggal</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">NIK Anak</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Nama Anak</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Imunisasi</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Berat/Tinggi</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Diagnosa</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Keterangan</th>
                 </tr>
             </thead>
             <tbody class="bg-white divide-y divide-gray-200">
@@ -125,20 +97,21 @@ if (!$result_laporan) {
                 ?>
                 <tr class="hover:bg-green-50 transition duration-150 ease-in-out">
                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900"><?= $no++ ?></td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700"><?= htmlspecialchars($row['tanggal']) ?></td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700"><?= htmlspecialchars($row['nik_anak']) ?></td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700"><?= htmlspecialchars($row['nama_anak']) ?></td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700"><?= htmlspecialchars(date('d F Y', strtotime($row['tgl_lahir']))) ?></td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700"><?= htmlspecialchars($row['nama_ibu']) ?></td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700"><?= htmlspecialchars($row['nama_ayah']) ?></td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700"><?= htmlspecialchars($row['alamat']) ?></td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700"><?= htmlspecialchars($row['jenis_imunisasi']) ?></td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700"><?= $row['berat_badan'] === null ? '-' : htmlspecialchars($row['berat_badan']) ?> kg / <?= $row['tinggi_badan'] === null ? '-' : htmlspecialchars($row['tinggi_badan']) ?> cm</td>
+                    <td class="px-6 py-4 text-sm text-gray-700"><?= htmlspecialchars($row['diagnosa'] ?: '-') ?></td>
+                    <td class="px-6 py-4 text-sm text-gray-700"><?= htmlspecialchars($row['keterangan'] ?: '-') ?></td>
                 </tr>
                 <?php
                     }
                 } else {
                 ?>
                 <tr>
-                    <td colspan="7" class="px-6 py-8 whitespace-nowrap text-sm text-gray-500 text-center font-semibold">
-                        <i class="fas fa-info-circle mr-2"></i> Tidak ada data anak yang melakukan imunisasi pada periode ini.
+                    <td colspan="8" class="px-6 py-8 whitespace-nowrap text-sm text-gray-500 text-center font-semibold">
+                        <i class="fas fa-info-circle mr-2"></i> Tidak ada data imunisasi pada periode ini.
                     </td>
                 </tr>
                 <?php

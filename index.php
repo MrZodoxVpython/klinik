@@ -1,5 +1,7 @@
 <?php
-session_start();
+require_once 'auth.php';
+start_secure_session();
+send_security_headers();
 $is_logged_in = isset($_SESSION['user_id']);
 $nama = $is_logged_in ? $_SESSION['nama'] : null;
 $role = isset($_SESSION['role']) ? $_SESSION['role'] : null;
@@ -37,7 +39,7 @@ $role = isset($_SESSION['role']) ? $_SESSION['role'] : null;
     <?php if ($is_logged_in && $role === 'admin'): ?>
       <a href="admin.php" class="bg-green-600 text-white px-4 py-2 rounded-full hover:bg-green-700 transition-all text-sm"><i class="fas fa-user-shield mr-2"></i> Dashboard Admin</a>
     <?php elseif ($is_logged_in): ?>
-      <a href="logout.php" class="bg-green-600 text-white px-4 py-2 rounded-full hover:bg-green-700 transition-all text-sm"><i class="fas fa-sign-out-alt mr-2"></i> Logout</a>
+      <form method="POST" action="logout.php"><input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>"><button type="submit" class="bg-green-600 text-white px-4 py-2 rounded-full hover:bg-green-700 transition-all text-sm"><i class="fas fa-sign-out-alt mr-2"></i> Logout</button></form>
     <?php else: ?>
       <a href="login.php" class="bg-green-600 text-white px-4 py-2 rounded-full hover:bg-green-700 transition-all text-sm"><i class="fas fa-sign-in-alt mr-2"></i> Login</a>
     <?php endif; ?>
@@ -63,6 +65,7 @@ $role = isset($_SESSION['role']) ? $_SESSION['role'] : null;
   <a href="<?= $is_logged_in ? 'imunisasi_pengguna.php' : 'login.php?redirect=imunisasi_pengguna.php' ?>" class="menu-card bg-white p-6 sm:p-10 rounded-2xl shadow-xl text-center text-green-700 font-semibold text-base sm:text-xl border border-green-200"><i class="fas fa-syringe text-3xl sm:text-4xl mb-2 sm:mb-4 text-green-600"></i><br>Imunisasi</a>
   <a href="<?= $is_logged_in ? 'jadwal_pengguna.php' : 'login.php?redirect=jadwal_pengguna.php' ?>" class="menu-card bg-white p-6 sm:p-10 rounded-2xl shadow-xl text-center text-green-700 font-semibold text-base sm:text-xl border border-green-200"><i class="fas fa-calendar-alt text-3xl sm:text-4xl mb-2 sm:mb-4 text-green-600"></i><br>Jadwal Posyandu</a>
   <a href="<?= $is_logged_in ? 'edukasi_ibu.php' : 'login.php?redirect=edukasi_ibu.php' ?>" class="menu-card bg-white p-6 sm:p-10 rounded-2xl shadow-xl text-center text-green-700 font-semibold text-base sm:text-xl border border-green-200"><i class="fas fa-book-reader text-3xl sm:text-4xl mb-2 sm:mb-4 text-green-600"></i><br>Edukasi Ibu</a>
+  <a href="<?= $is_logged_in ? 'petugas_pengguna.php' : 'login.php?redirect=petugas_pengguna.php' ?>" class="menu-card bg-white p-6 sm:p-10 rounded-2xl shadow-xl text-center text-green-700 font-semibold text-base sm:text-xl border border-green-200"><i class="fas fa-user-nurse text-3xl sm:text-4xl mb-2 sm:mb-4 text-green-600"></i><br>Petugas Posyandu</a>
 </section>
 <footer class="mt-16 text-center text-sm text-gray-600 py-8 border-t border-green-200 bg-white">&copy; 2025 Posyandu Bina Cita. Semua hak dilindungi.</footer>
 <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>

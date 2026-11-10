@@ -1,10 +1,8 @@
 <?php
-session_start();
-include 'koneksi.php';
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'pengguna') {
-    header("Location: login.php");
-    exit;
-}
+require_once 'auth.php';
+require_once 'koneksi.php';
+require_role('pengguna');
+send_security_headers();
 $user_id = $_SESSION['user_id'];
 $nama_pengguna = $_SESSION['nama'];
 $query = "

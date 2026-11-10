@@ -1,10 +1,8 @@
 <?php
-session_start();
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'pengguna') {
-    header("Location: login.php");
-    exit;
-}
-include 'koneksi.php';
+require_once 'auth.php';
+require_once 'koneksi.php';
+require_role('pengguna');
+send_security_headers();
 $petugas = mysqli_query($conn, "SELECT * FROM petugas ORDER BY nama ASC");
 ?>
 <!DOCTYPE html>

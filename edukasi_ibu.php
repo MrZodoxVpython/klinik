@@ -1,3 +1,8 @@
+<?php
+require_once 'auth.php';
+require_login();
+send_security_headers();
+?>
 <!DOCTYPE html>
 <html lang="id">
 <head>

@@ -1,40 +1,70 @@
 <?php
-session_start();
-include 'koneksi.php';
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    header("Location: login.php");
-    exit;
+require_once 'auth.php';
+require_once 'koneksi.php';
+require_role('admin');
+send_security_headers();
+
+function childExists(mysqli $conn, int $anakId): bool
+{
+    $stmt = mysqli_prepare($conn, 'SELECT id FROM data_anak WHERE id = ?');
+    mysqli_stmt_bind_param($stmt, 'i', $anakId);
+    mysqli_stmt_execute($stmt);
+    $exists = mysqli_num_rows(mysqli_stmt_get_result($stmt)) === 1;
+    mysqli_stmt_close($stmt);
+    return $exists;
 }
-$error_message = '';
-$success_message = '';
-$anak_result = mysqli_query($conn, "SELECT id, nik_anak, nama_anak FROM data_anak ORDER BY nama_anak ASC");
-if (!$anak_result) {
-    $error_message = "Gagal mengambil data anak: " . mysqli_error($conn);
+
+function optionalMeasurement(string $value, float $maximum): float|false|null
+{
+    if ($value === '') {
+        return null;
+    }
+    if (!is_numeric($value) || (float) $value <= 0 || (float) $value > $maximum) {
+        return false;
+    }
+    return (float) $value;
 }
+
+$errorMessage = '';
+$anakId = 0;
+$jenis = $tgl = $diagnosa = $ket = '';
+$berat = $tinggi = '';
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $anak_id = isset($_POST['anak_id']) ? intval($_POST['anak_id']) : 0;
-    $jenis   = isset($_POST['jenis_imunisasi']) ? trim($_POST['jenis_imunisasi']) : '';
-    $tgl     = isset($_POST['tanggal']) ? trim($_POST['tanggal']) : '';
-    $ket     = isset($_POST['keterangan']) ? trim($_POST['keterangan']) : '';
-    if (empty($anak_id) || empty($jenis) || empty($tgl)) {
-        $error_message = "Semua kolom wajib diisi kecuali Keterangan.";
+    verify_csrf();
+    $anakId = filter_var($_POST['anak_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 0;
+    $jenis = trim((string) ($_POST['jenis_imunisasi'] ?? ''));
+    $tgl = (string) ($_POST['tanggal'] ?? '');
+    $berat = trim((string) ($_POST['berat_badan'] ?? ''));
+    $tinggi = trim((string) ($_POST['tinggi_badan'] ?? ''));
+    $diagnosa = trim((string) ($_POST['diagnosa'] ?? ''));
+    $ket = trim((string) ($_POST['keterangan'] ?? ''));
+    $beratValue = optionalMeasurement($berat, 99.99);
+    $tinggiValue = optionalMeasurement($tinggi, 999.99);
+
+    if (!$anakId || !childExists($conn, $anakId)) {
+        $errorMessage = 'Pilih anak yang valid.';
+    } elseif ($jenis === '' || strlen($jenis) > 100) {
+        $errorMessage = 'Jenis imunisasi wajib diisi, maksimal 100 karakter.';
+    } elseif (!is_valid_date($tgl) || $tgl > date('Y-m-d')) {
+        $errorMessage = 'Tanggal imunisasi tidak valid atau berada di masa depan.';
+    } elseif ($beratValue === false || $tinggiValue === false) {
+        $errorMessage = 'Berat atau tinggi badan tidak valid.';
+    } elseif (strlen($diagnosa) > 255) {
+        $errorMessage = 'Diagnosa maksimal 255 karakter.';
     } else {
-        $stmt = mysqli_prepare($conn, "INSERT INTO imunisasi (anak_id, jenis_imunisasi, tanggal, keterangan) VALUES (?, ?, ?, ?)");
-        if ($stmt === false) {
-            $error_message = "Gagal menyiapkan statement: " . mysqli_error($conn);
-        } else {
-            mysqli_stmt_bind_param($stmt, "isss", $anak_id, $jenis, $tgl, $ket);
-            $sukses = mysqli_stmt_execute($stmt);
-            if ($sukses) {
-                header("Location: imunisasi_admin.php?status=added");
-                exit;
-            } else {
-                $error_message = "Gagal menyimpan data imunisasi: " . mysqli_stmt_error($stmt);
-            }
-            mysqli_stmt_close($stmt);
+        $stmt = mysqli_prepare($conn, 'INSERT INTO imunisasi (anak_id, jenis_imunisasi, tanggal, berat_badan, tinggi_badan, diagnosa, keterangan) VALUES (?, ?, ?, ?, ?, ?, ?)');
+        mysqli_stmt_bind_param($stmt, 'issddss', $anakId, $jenis, $tgl, $beratValue, $tinggiValue, $diagnosa, $ket);
+        $saved = mysqli_stmt_execute($stmt);
+        mysqli_stmt_close($stmt);
+        if ($saved) {
+            redirect('imunisasi_admin.php?status=added');
         }
+        $errorMessage = 'Data imunisasi gagal disimpan.';
     }
 }
+
+$anakResult = mysqli_query($conn, 'SELECT id, nik_anak, nama_anak FROM data_anak ORDER BY nama_anak ASC');
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -45,56 +75,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 </head>
-<body class="bg-gradient-to-br from-green-50 to-green-100 min-h-screen flex items-center justify-center py-10 px-4 sm:px-6 lg:px-8">
+<body class="bg-gradient-to-br from-green-50 to-green-100 min-h-screen flex items-center justify-center py-10 px-4">
     <div class="bg-white p-8 sm:p-10 rounded-xl shadow-2xl w-full max-w-lg border border-green-200">
-        <div class="flex justify-center mb-6">
-            <svg class="h-16 w-16 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.007 12.007 0 002.944 12c0 2.871.675 5.55 1.945 7.917v0C7.294 20.354 9.582 21 12 21c2.418 0 4.706-.646 6.111-2.083v0C21.325 17.55 22 14.871 22 12c0-3.097-.665-6.012-1.882-8.616z" />
-            </svg>
-        </div>
-        <h2 class="text-3xl font-extrabold text-green-800 mb-4 text-center">Tambah Data Imunisasi</h2>
-        <?php if (!empty($error_message)): ?>
-            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md relative mb-6 text-sm" role="alert">
-                <strong class="font-bold mr-1">Error!</strong><span class="block sm:inline"><?= htmlspecialchars($error_message) ?></span>
-            </div>
-        <?php endif; ?>
+        <h1 class="text-3xl font-extrabold text-green-800 mb-6 text-center">Tambah Data Imunisasi</h1>
+        <?php if ($errorMessage !== ''): ?><div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6"><?= htmlspecialchars($errorMessage) ?></div><?php endif; ?>
         <form method="POST" class="space-y-5">
-            <div>
-                <label for="anak_id" class="block text-sm font-semibold text-gray-700 mb-1">Pilih Anak:</label>
-                <select name="anak_id" id="anak_id" required class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 text-gray-900">
-                    <option value="">-- Pilih Anak --</option>
-                    <?php
-                    if ($anak_result && mysqli_num_rows($anak_result) > 0) {
-                        mysqli_data_seek($anak_result, 0);
-                        while ($anak = mysqli_fetch_assoc($anak_result)):
-                    ?>
-                        <option value="<?= $anak['id'] ?>"><?= htmlspecialchars($anak['nik_anak']) ?> - <?= htmlspecialchars($anak['nama_anak']) ?></option>
-                    <?php
-                        endwhile;
-                    } else {
-                        echo '<option value="" disabled>Tidak ada data anak ditemukan</option>';
-                    }
-                    ?>
-                </select>
-            </div>
-            <div>
-                <label for="jenis_imunisasi" class="block text-sm font-semibold text-gray-700 mb-1">Jenis Imunisasi:</label>
-                <input type="text" name="jenis_imunisasi" id="jenis_imunisasi" placeholder="Contoh: BCG, Polio, DPT-HB-Hib" required class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 text-gray-900 placeholder-gray-400" />
-            </div>
-            <div>
-                <label for="tanggal" class="block text-sm font-semibold text-gray-700 mb-1">Tanggal Imunisasi:</label>
-                <input type="date" name="tanggal" id="tanggal" required class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 text-gray-900" />
-            </div>
-            <div>
-                <label for="keterangan" class="block text-sm font-semibold text-gray-700 mb-1">Keterangan (Opsional):</label>
-                <textarea name="keterangan" id="keterangan" placeholder="Catatan tambahan mengenai imunisasi" rows="3" class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 text-gray-900 placeholder-gray-400"></textarea>
-            </div>
-            <div class="flex justify-between items-center mt-6">
-                <button type="submit" class="bg-green-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition duration-300 ease-in-out transform hover:scale-105 flex items-center justify-center">
-                    <i class="fas fa-save mr-2"></i> Simpan Data
-                </button>
-                <a href="imunisasi_admin.php" class="text-gray-600 hover:text-green-800 transition duration-300 flex items-center"><i class="fas fa-arrow-left mr-2"></i> Kembali</a>
-            </div>
+            <?= csrf_field() ?>
+            <div><label for="anak_id" class="block text-sm font-semibold text-gray-700 mb-1">Pilih Anak</label><select name="anak_id" id="anak_id" required class="block w-full px-4 py-2 border rounded-lg"><option value="">-- Pilih Anak --</option><?php while ($anak = mysqli_fetch_assoc($anakResult)): ?><option value="<?= (int) $anak['id'] ?>" <?= $anakId === (int) $anak['id'] ? 'selected' : '' ?>><?= htmlspecialchars($anak['nik_anak']) ?> — <?= htmlspecialchars($anak['nama_anak']) ?></option><?php endwhile; ?></select></div>
+            <div><label for="jenis_imunisasi" class="block text-sm font-semibold text-gray-700 mb-1">Jenis Imunisasi</label><input type="text" name="jenis_imunisasi" id="jenis_imunisasi" maxlength="100" value="<?= htmlspecialchars($jenis) ?>" required class="block w-full px-4 py-2 border rounded-lg"></div>
+            <div><label for="tanggal" class="block text-sm font-semibold text-gray-700 mb-1">Tanggal Imunisasi</label><input type="date" name="tanggal" id="tanggal" max="<?= date('Y-m-d') ?>" value="<?= htmlspecialchars($tgl) ?>" required class="block w-full px-4 py-2 border rounded-lg"></div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4"><div><label for="berat_badan" class="block text-sm font-semibold text-gray-700 mb-1">Berat Badan (kg)</label><input type="number" step="0.01" min="0.01" max="99.99" name="berat_badan" id="berat_badan" value="<?= htmlspecialchars($berat) ?>" class="block w-full px-4 py-2 border rounded-lg"></div><div><label for="tinggi_badan" class="block text-sm font-semibold text-gray-700 mb-1">Tinggi Badan (cm)</label><input type="number" step="0.01" min="0.01" max="999.99" name="tinggi_badan" id="tinggi_badan" value="<?= htmlspecialchars($tinggi) ?>" class="block w-full px-4 py-2 border rounded-lg"></div></div>
+            <div><label for="diagnosa" class="block text-sm font-semibold text-gray-700 mb-1">Diagnosa</label><input type="text" name="diagnosa" id="diagnosa" maxlength="255" value="<?= htmlspecialchars($diagnosa) ?>" class="block w-full px-4 py-2 border rounded-lg"></div>
+            <div><label for="keterangan" class="block text-sm font-semibold text-gray-700 mb-1">Keterangan</label><textarea name="keterangan" id="keterangan" rows="3" class="block w-full px-4 py-2 border rounded-lg"><?= htmlspecialchars($ket) ?></textarea></div>
+            <div class="flex justify-between items-center pt-2"><button type="submit" class="bg-green-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-green-700"><i class="fas fa-save mr-2"></i>Simpan Data</button><a href="imunisasi_admin.php" class="text-gray-600 hover:text-green-800">Kembali</a></div>
         </form>
     </div>
 </body>

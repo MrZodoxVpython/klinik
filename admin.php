@@ -1,10 +1,8 @@
 <?php
-session_start();
+require_once 'auth.php';
 require_once 'koneksi.php';
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    header("Location: login.php");
-    exit;
-}
+require_role('admin');
+send_security_headers();
 $nama_admin = $_SESSION['nama'];
 ?>
 <!DOCTYPE html>
@@ -37,7 +35,7 @@ $nama_admin = $_SESSION['nama'];
         <div class="text-sm sm:text-base text-green-800 font-semibold flex items-center">
             <i class="fas fa-hand-sparkles text-yellow-500 mr-2"></i> Selamat datang,
             <span class="font-bold ml-1 mr-4"><?= htmlspecialchars($nama_admin) ?></span>
-            <a href="logout.php" class="bg-red-500 text-white px-4 py-2 rounded-full hover:bg-red-600 transition duration-300 ease-in-out transform hover:scale-105 flex items-center text-sm"><i class="fas fa-sign-out-alt mr-1"></i> Logout</a>
+            <form method="POST" action="logout.php"><input type="hidden" name="csrf_token" value="<?= htmlspecialchars(csrf_token(), ENT_QUOTES, 'UTF-8') ?>"><button type="submit" class="bg-red-500 text-white px-4 py-2 rounded-full hover:bg-red-600 transition duration-300 ease-in-out transform hover:scale-105 flex items-center text-sm"><i class="fas fa-sign-out-alt mr-1"></i> Logout</button></form>
         </div>
     </div>
 </header>
@@ -61,6 +59,7 @@ $nama_admin = $_SESSION['nama'];
     <a href="data_anak_admin.php" class="menu-card bg-white p-6 rounded-2xl shadow-lg hover:shadow-xl text-center text-green-700 font-semibold flex flex-col items-center justify-center"><i class="fas fa-child text-5xl mb-3 text-blue-500"></i><span class="text-lg">Kelola Data Anak</span></a>
     <a href="imunisasi_admin.php" class="menu-card bg-white p-6 rounded-2xl shadow-lg hover:shadow-xl text-center text-green-700 font-semibold flex flex-col items-center justify-center"><i class="fas fa-syringe text-5xl mb-3 text-red-500"></i><span class="text-lg">Data Imunisasi</span></a>
     <a href="jadwal_admin.php" class="menu-card bg-white p-6 rounded-2xl shadow-lg hover:shadow-xl text-center text-green-700 font-semibold flex flex-col items-center justify-center"><i class="fas fa-calendar-alt text-5xl mb-3 text-purple-500"></i><span class="text-lg">Jadwal Posyandu</span></a>
+    <a href="petugas_admin.php" class="menu-card bg-white p-6 rounded-2xl shadow-lg hover:shadow-xl text-center text-green-700 font-semibold flex flex-col items-center justify-center"><i class="fas fa-user-nurse text-5xl mb-3 text-teal-500"></i><span class="text-lg">Kelola Petugas</span></a>
     <a href="laporan.php" class="menu-card bg-white p-6 rounded-2xl shadow-lg hover:shadow-xl text-center text-green-700 font-semibold flex flex-col items-center justify-center"><i class="fas fa-chart-line text-5xl mb-3 text-indigo-500"></i><span class="text-lg">Lihat Laporan</span></a>
 </section>
 <footer class="bg-white border-t border-green-200 py-8"><div class="text-center text-sm text-gray-600">&copy; <?= date('Y') ?> Posyandu Bina Cita. Semua Hak Dilindungi.</div></footer>

@@ -1,16 +1,17 @@
 <?php
-session_start();
-include 'koneksi.php';
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'pengguna') {
-    header("Location: login.php");
-    exit;
-}
+require_once 'auth.php';
+require_once 'koneksi.php';
+require_role('pengguna');
+send_security_headers();
 $user_id = $_SESSION['user_id'];
 $nama_pengguna = $_SESSION['nama'];
-$anak_result = mysqli_query($conn, "SELECT nama_anak FROM data_anak WHERE user_id = '$user_id' ORDER BY nama_anak ASC");
+$anak_stmt = mysqli_prepare($conn, 'SELECT nama_anak FROM data_anak WHERE user_id = ? ORDER BY nama_anak ASC');
+mysqli_stmt_bind_param($anak_stmt, 'i', $user_id);
+mysqli_stmt_execute($anak_stmt);
+$anak_result = mysqli_stmt_get_result($anak_stmt);
 $anak_nama = [];
 while ($row = mysqli_fetch_assoc($anak_result)) { $anak_nama[] = $row['nama_anak']; }
-$jadwal_result = mysqli_query($conn, "SELECT * FROM jadwal_posyandu ORDER BY tanggal DESC, waktu DESC LIMIT 1");
+$jadwal_result = mysqli_query($conn, "SELECT * FROM jadwal_posyandu WHERE tanggal > CURDATE() OR (tanggal = CURDATE() AND waktu >= DATE_FORMAT(CURTIME(), '%H:%i')) ORDER BY tanggal ASC, waktu ASC LIMIT 1");
 $jadwal = mysqli_fetch_assoc($jadwal_result);
 function formatTanggal($tanggal) {
     $hari = ['Sunday'=>'Minggu','Monday'=>'Senin','Tuesday'=>'Selasa','Wednesday'=>'Rabu','Thursday'=>'Kamis','Friday'=>'Jumat','Saturday'=>'Sabtu'];
@@ -45,12 +46,13 @@ function formatTanggal($tanggal) {
                 <p class="text-xl mt-1">Pukul <span class="font-bold"><?= substr($jadwal['waktu'], 0, 5) ?> WIB</span> - selesai</p>
                 <p class="mt-3">Di <strong><span class="font-bold text-green-700"><?= htmlspecialchars($jadwal['tempat']) ?></span></strong></p>
             </div>
-            <p class="mt-4">Jangan lupa ajak anak Anda: <br><span class="font-extrabold text-green-700 text-xl block mt-2"><?= implode(', ', $anak_nama) ?></span></p>
+            <?php if (!empty($jadwal['keterangan'])): ?><p class="mt-4 text-sm text-gray-600"><?= htmlspecialchars($jadwal['keterangan']) ?></p><?php endif; ?>
+            <p class="mt-4">Jangan lupa ajak anak Anda: <br><span class="font-extrabold text-green-700 text-xl block mt-2"><?= htmlspecialchars(implode(', ', $anak_nama)) ?></span></p>
             <p class="text-green-700 font-semibold italic mt-4">"Kesehatan anak adalah prioritas utama. Mari bersama menjaga tumbuh kembang mereka!"</p>
         </div>
         <?php elseif (count($anak_nama) == 0): ?>
         <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md relative text-left" role="alert">
-            <strong class="font-bold mr-1">Perhatian!</strong><span class="block sm:inline">Anda belum memiliki data anak terdaftar. Silakan <a href="tambah_data_anak_pengguna.php" class="text-red-800 hover:underline font-semibold">tambahkan data anak Anda</a> untuk mendapatkan informasi jadwal.</span>
+            <strong class="font-bold mr-1">Perhatian!</strong><span class="block sm:inline">Anda belum memiliki data anak terdaftar. Silakan hubungi admin Posyandu agar data anak dapat dihubungkan ke akun Anda.</span>
         </div>
         <?php else: ?>
         <div class="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded-md relative text-left" role="alert">

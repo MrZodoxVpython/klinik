@@ -1,6 +1,8 @@
 <?php
-session_start();
+require_once 'auth.php';
 include 'koneksi.php';
+start_secure_session();
+send_security_headers();
 
 $error = "";
 $success_message = "";
@@ -12,39 +14,50 @@ if (isset($_GET['status']) && $_GET['status'] === 'registered') {
 
 // Proses login
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $email = trim($_POST['email']);
-    $password = trim($_POST['password']);
+    verify_csrf();
+    $email = strtolower(trim((string) ($_POST['email'] ?? '')));
+    $password = (string) ($_POST['password'] ?? '');
 
     if (empty($email) || empty($password)) {
         $error = "Email dan Password wajib diisi.";
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = "Format email tidak valid!";
     } else {
-        $stmt = mysqli_prepare($conn, "SELECT id, nama, password, role FROM users WHERE email = ?");
+        $stmt = mysqli_prepare($conn, "SELECT id, nama, password, role, failed_login_attempts, locked_until FROM users WHERE email = ?");
         mysqli_stmt_bind_param($stmt, "s", $email);
         mysqli_stmt_execute($stmt);
         $result = mysqli_stmt_get_result($stmt);
         $data = mysqli_fetch_assoc($result);
         mysqli_stmt_close($stmt);
 
-        if ($data && password_verify($password, $data['password'])) {
+        $isLocked = $data && !empty($data['locked_until']) && strtotime($data['locked_until']) > time();
+        if ($isLocked) {
+            $error = "Terlalu banyak percobaan login. Coba kembali 15 menit lagi.";
+        } elseif ($data && password_verify($password, $data['password'])) {
             $role = $data['role'];
 
-            if ($role === 'admin' && !preg_match('/^\d+\.kader\.[a-zA-Z]+@gmail\.com$/', $email)) {
-                $error = "Format email admin tidak sesuai. Contoh: 01.kader.nama@gmail.com";
-            } else {
-                $_SESSION['user_id'] = $data['id'];
-                $_SESSION['nama']    = $data['nama'];
-                $_SESSION['role']    = $role;
+            $resetStmt = mysqli_prepare($conn, "UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = ?");
+            mysqli_stmt_bind_param($resetStmt, "i", $data['id']);
+            mysqli_stmt_execute($resetStmt);
+            mysqli_stmt_close($resetStmt);
 
-                if ($role === 'admin') {
-                    header("Location: admin.php");
-                } else {
-                    header("Location: index.php");
-                }
-                exit;
+            session_regenerate_id(true);
+            $_SESSION['user_id'] = $data['id'];
+            $_SESSION['nama']    = $data['nama'];
+            $_SESSION['role']    = $role;
+
+            if ($role === 'admin') {
+                redirect('admin.php');
             }
+
+            redirect(user_destination((string) ($_POST['redirect'] ?? '')));
         } else {
+            if ($data) {
+                $attemptStmt = mysqli_prepare($conn, "UPDATE users SET failed_login_attempts = failed_login_attempts + 1, locked_until = IF(failed_login_attempts >= 5, DATE_ADD(NOW(), INTERVAL 15 MINUTE), NULL) WHERE id = ?");
+                mysqli_stmt_bind_param($attemptStmt, "i", $data['id']);
+                mysqli_stmt_execute($attemptStmt);
+                mysqli_stmt_close($attemptStmt);
+            }
             $error = "Email atau password salah!";
         }
     }
@@ -83,6 +96,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php endif; ?>
 
         <form method="POST" class="space-y-5" novalidate>
+            <?= csrf_field() ?>
+            <input type="hidden" name="redirect" value="<?= htmlspecialchars((string) ($_GET['redirect'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
             <div>
                 <label for="email" class="block text-sm font-semibold text-gray-700 mb-1">Email:</label>
                 <input type="email" id="email" name="email" placeholder="Masukkan email Anda" required

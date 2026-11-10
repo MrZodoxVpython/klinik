@@ -1,22 +1,22 @@
 <?php
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
-session_start();
+require_once 'auth.php';
 include 'koneksi.php';
+start_secure_session();
+send_security_headers();
 $success = "";
 $error = "";
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $nama     = trim($_POST['username']);
-    $email    = trim($_POST['email']);
-    $password = $_POST['password'];
+    verify_csrf();
+    $nama     = trim((string) ($_POST['username'] ?? ''));
+    $email    = strtolower(trim((string) ($_POST['email'] ?? '')));
+    $password = (string) ($_POST['password'] ?? '');
     if (empty($nama) || empty($email) || empty($password)) { $error = "Semua kolom wajib diisi."; }
     elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) { $error = "Format email tidak valid."; }
-    elseif (substr($email, -10) !== '@gmail.com') { $error = "Email harus menggunakan domain @gmail.com."; }
-    elseif (strlen($password) < 6) { $error = "Password minimal 6 karakter."; }
+    elseif (strlen($password) < 10) { $error = "Password minimal 10 karakter."; }
     else {
-        $role = preg_match('/^\d+\.kader\..+@gmail\.com$/', $email) ? 'admin' : 'pengguna';
+        $role = 'pengguna';
         $stmt_cek = mysqli_prepare($conn, "SELECT id FROM users WHERE email=?");
-        if (!$stmt_cek) { $error = "Gagal mempersiapkan query SELECT: " . mysqli_error($conn); }
+        if (!$stmt_cek) { $error = "Pendaftaran belum dapat diproses. Silakan coba kembali."; }
         else {
             mysqli_stmt_bind_param($stmt_cek, "s", $email);
             mysqli_stmt_execute($stmt_cek);
@@ -25,7 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             else {
                 $hashed = password_hash($password, PASSWORD_DEFAULT);
                 $stmt = mysqli_prepare($conn, "INSERT INTO users (nama, email, password, role) VALUES (?, ?, ?, ?)");
-                if (!$stmt) { $error = "Gagal mempersiapkan query INSERT: " . mysqli_error($conn); }
+                if (!$stmt) { $error = "Pendaftaran belum dapat diproses. Silakan coba kembali."; }
                 else {
                     mysqli_stmt_bind_param($stmt, "ssss", $nama, $email, $hashed, $role);
                     if (mysqli_stmt_execute($stmt)) {
@@ -34,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         mysqli_close($conn);
                         header("Location: login.php?status=registered");
                         exit;
-                    } else { $error = "Gagal menyimpan data: " . mysqli_error($conn); }
+                    } else { $error = "Pendaftaran belum dapat diproses. Silakan coba kembali."; }
                     mysqli_stmt_close($stmt);
                 }
             }
@@ -67,6 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             </div>
         <?php endif; ?>
         <form method="POST" class="space-y-5">
+            <?= csrf_field() ?>
             <div>
                 <label for="username" class="block text-sm font-semibold text-gray-700 mb-1">Username:</label>
                 <input type="text" id="username" name="username" placeholder="Masukkan username Anda" required class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 text-gray-900 placeholder-gray-400" />
@@ -74,11 +75,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <div>
                 <label for="email" class="block text-sm font-semibold text-gray-700 mb-1">Email:</label>
                 <input type="email" id="email" name="email" placeholder="contoh@gmail.com" required class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 text-gray-900 placeholder-gray-400" />
-                <p class="mt-1 text-xs text-gray-500">Gunakan format email dengan @gmail.com. Untuk akun admin, gunakan format: [nomor].kader.[nama]@gmail.com</p>
+                <p class="mt-1 text-xs text-gray-500">Akun yang dibuat dari halaman ini adalah akun orang tua/pengguna.</p>
             </div>
             <div>
                 <label for="password" class="block text-sm font-semibold text-gray-700 mb-1">Password:</label>
-                <input type="password" id="password" name="password" placeholder="Minimal 6 karakter" required class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 text-gray-900 placeholder-gray-400" />
+                <input type="password" id="password" name="password" placeholder="Minimal 10 karakter" minlength="10" required class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-green-500 focus:border-green-500 text-gray-900 placeholder-gray-400" />
             </div>
             <button type="submit" class="w-full bg-green-600 text-white font-bold py-2 px-6 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition duration-300 ease-in-out transform hover:scale-105 flex items-center justify-center">
                 <i class="fas fa-user-plus mr-2"></i> Daftar Sekarang
